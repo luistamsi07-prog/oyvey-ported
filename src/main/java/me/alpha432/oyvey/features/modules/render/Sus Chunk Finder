@@ -1,0 +1,12 @@
+public static boolean enabled = true;
+
+public static boolean detectAmethyst = true;
+public static boolean detectCaveVines = true;
+
+public static boolean showChunkBox = true;
+public static boolean showBlockBox = true;
+public static boolean showTracer = true;
+public static boolean showText = true;
+
+public static int chunkRadius = 4;
+public static int scanInterval = 10;
