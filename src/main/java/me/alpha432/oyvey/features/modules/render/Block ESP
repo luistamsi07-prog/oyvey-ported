@@ -1,0 +1,431 @@
+package com.example.cheatclient;
+
+import com.mojang.blaze3d.vertex.PoseStack;
+import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.debug.DebugRenderer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+
+import java.util.HashSet;
+import java.util.Set;
+
+public final class BlockESP {
+
+    private BlockESP() {
+    }
+
+    /*
+     * Blocks selected for ESP.
+     *
+     * The GUI can add/remove blocks from this set later.
+     */
+    private static final Set<ResourceLocation> BLOCKS = new HashSet<>();
+
+    /*
+     * ESP settings.
+     */
+    public static boolean enabled = true;
+    public static boolean showBox = true;
+    public static boolean showTracer = true;
+
+    public static int range = 64;
+
+    /*
+     * Default blocks.
+     */
+    static {
+        addBlock("minecraft:diamond_ore");
+        addBlock("minecraft:deepslate_diamond_ore");
+        addBlock("minecraft:ancient_debris");
+        addBlock("minecraft:spawner");
+    }
+
+    /**
+     * Add a block to the ESP list.
+     */
+    public static void addBlock(String id) {
+
+        ResourceLocation location =
+                ResourceLocation.parse(id);
+
+        BLOCKS.add(location);
+    }
+
+    /**
+     * Remove a block from ESP.
+     */
+    public static void removeBlock(String id) {
+
+        BLOCKS.remove(
+                ResourceLocation.parse(id)
+        );
+    }
+
+    /**
+     * Check whether a block is selected.
+     */
+    public static boolean isSelected(Block block) {
+
+        ResourceLocation id =
+                BuiltInRegistries.BLOCK.getKey(block);
+
+        return BLOCKS.contains(id);
+    }
+
+    /**
+     * Main rendering function.
+     */
+    public static void render(
+            WorldRenderContext context) {
+
+        if (!enabled) {
+            return;
+        }
+
+        Minecraft mc = Minecraft.getInstance();
+
+        if (mc.level == null ||
+                mc.player == null) {
+            return;
+        }
+
+        PoseStack matrices =
+                context.matrices();
+
+        MultiBufferSource consumers =
+                context.consumers();
+
+        if (matrices == null ||
+                consumers == null) {
+            return;
+        }
+
+        /*
+         * Camera position.
+         */
+        double cameraX =
+                context.gameRenderer()
+                        .getMainCamera()
+                        .getPosition()
+                        .x;
+
+        double cameraY =
+                context.gameRenderer()
+                        .getMainCamera()
+                        .getPosition()
+                        .y;
+
+        double cameraZ =
+                context.gameRenderer()
+                        .getMainCamera()
+                        .getPosition()
+                        .z;
+
+        matrices.pushPose();
+
+        matrices.translate(
+                -cameraX,
+                -cameraY,
+                -cameraZ
+        );
+
+        BlockPos player =
+                mc.player.blockPosition();
+
+        /*
+         * Search radius.
+         */
+        int minX =
+                player.getX() - range;
+
+        int maxX =
+                player.getX() + range;
+
+        int minY =
+                Math.max(
+                        mc.level.getMinBuildHeight(),
+                        player.getY() - range
+                );
+
+        int maxY =
+                Math.min(
+                        mc.level.getMaxBuildHeight(),
+                        player.getY() + range
+                );
+
+        int minZ =
+                player.getZ() - range;
+
+        int maxZ =
+                player.getZ() + range;
+
+        /*
+         * Search loaded blocks.
+         */
+        for (int x = minX;
+             x <= maxX;
+             x++) {
+
+            for (int y = minY;
+                 y <= maxY;
+                 y++) {
+
+                for (int z = minZ;
+                     z <= maxZ;
+                     z++) {
+
+                    BlockPos pos =
+                            new BlockPos(
+                                    x,
+                                    y,
+                                    z
+                            );
+
+                    BlockState state =
+                            mc.level.getBlockState(pos);
+
+                    Block block =
+                            state.getBlock();
+
+                    if (!isSelected(block)) {
+                        continue;
+                    }
+
+                    renderBlock(
+                            matrices,
+                            consumers,
+                            context,
+                            pos,
+                            block
+                    );
+                }
+            }
+        }
+
+        matrices.popPose();
+    }
+
+    /**
+     * Render one ESP target.
+     */
+    private static void renderBlock(
+            PoseStack matrices,
+            MultiBufferSource consumers,
+            WorldRenderContext context,
+            BlockPos pos,
+            Block block) {
+
+        /*
+         * Diamond/ore-style green ESP.
+         *
+         * You can later make the color configurable
+         * through the GUI.
+         */
+        float red = 0.10f;
+        float green = 1.00f;
+        float blue = 0.25f;
+
+        AABB box =
+                new AABB(pos);
+
+        /*
+         * Filled ESP.
+         */
+        if (showBox) {
+
+            DebugRenderer.renderFilledBox(
+                    matrices,
+                    consumers,
+                    box,
+                    red,
+                    green,
+                    blue,
+                    0.25f
+            );
+
+            /*
+             * Smaller inner box creates a more
+             * pronounced highlighted appearance.
+             */
+            DebugRenderer.renderFilledBox(
+                    matrices,
+                    consumers,
+                    new AABB(
+                            pos.getX() + 0.04,
+                            pos.getY() + 0.04,
+                            pos.getZ() + 0.04,
+
+                            pos.getX() + 0.96,
+                            pos.getY() + 0.96,
+                            pos.getZ() + 0.96
+                    ),
+                    red,
+                    green,
+                    blue,
+                    0.10f
+            );
+        }
+
+        /*
+         * Tracer.
+         */
+        if (showTracer) {
+
+            renderTracer(
+                    matrices,
+                    consumers,
+                    context,
+                    pos,
+                    red,
+                    green,
+                    blue
+            );
+        }
+    }
+
+    /**
+     * Render tracer from player to block.
+     */
+    private static void renderTracer(
+            PoseStack matrices,
+            MultiBufferSource consumers,
+            WorldRenderContext context,
+            BlockPos pos,
+            float red,
+            float green,
+            float blue) {
+
+        Minecraft mc =
+                Minecraft.getInstance();
+
+        double startX =
+                mc.player.getX();
+
+        double startY =
+                mc.player.getY() +
+                        mc.player.getEyeHeight();
+
+        double startZ =
+                mc.player.getZ();
+
+        double targetX =
+                pos.getX() + 0.5;
+
+        double targetY =
+                pos.getY() + 0.5;
+
+        double targetZ =
+                pos.getZ() + 0.5;
+
+        drawTracer(
+                matrices,
+                consumers,
+
+                startX,
+                startY,
+                startZ,
+
+                targetX,
+                targetY,
+                targetZ,
+
+                red,
+                green,
+                blue
+        );
+    }
+
+    /**
+     * Simple tracer representation.
+     *
+     * This is deliberately kept separate so we can replace it
+     * later with a proper thin line renderer.
+     */
+    private static void drawTracer(
+            PoseStack matrices,
+            MultiBufferSource consumers,
+
+            double x1,
+            double y1,
+            double z1,
+
+            double x2,
+            double y2,
+            double z2,
+
+            float red,
+            float green,
+            float blue) {
+
+        double thickness =
+                0.018;
+
+        double minX =
+                Math.min(x1, x2) -
+                        thickness;
+
+        double minY =
+                Math.min(y1, y2) -
+                        thickness;
+
+        double minZ =
+                Math.min(z1, z2) -
+                        thickness;
+
+        double maxX =
+                Math.max(x1, x2) +
+                        thickness;
+
+        double maxY =
+                Math.max(y1, y2) +
+                        thickness;
+
+        double maxZ =
+                Math.max(z1, z2) +
+                        thickness;
+
+        DebugRenderer.renderFilledBox(
+                matrices,
+                consumers,
+
+                new AABB(
+                        minX,
+                        minY,
+                        minZ,
+
+                        maxX,
+                        maxY,
+                        maxZ
+                ),
+
+                red,
+                green,
+                blue,
+
+                0.65f
+        );
+    }
+
+    /**
+     * Return all selected blocks.
+     */
+    public static Set<ResourceLocation>
+    getSelectedBlocks() {
+
+        return Set.copyOf(BLOCKS);
+    }
+
+    /**
+     * Remove everything.
+     */
+    public static void clear() {
+
+        BLOCKS.clear();
+    }
+}
