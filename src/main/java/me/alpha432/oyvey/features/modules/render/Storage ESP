@@ -1,0 +1,274 @@
+package com.example.cheatclient;
+
+import com.mojang.blaze3d.vertex.PoseStack;
+import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.debug.DebugRenderer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
+import net.minecraft.world.level.block.entity.EnderChestBlockEntity;
+import net.minecraft.world.level.block.entity.HopperBlockEntity;
+import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity;
+import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
+import net.minecraft.world.level.block.entity.DispenserBlockEntity;
+import net.minecraft.world.level.block.entity.DropperBlockEntity;
+
+import net.minecraft.world.phys.AABB;
+
+public final class StorageESP {
+
+    private StorageESP() {
+    }
+
+    /**
+     * Draws ESP around nearby storage/container blocks.
+     */
+    public static void render(WorldRenderContext context) {
+
+        Minecraft client = Minecraft.getInstance();
+
+        if (client.level == null || client.player == null) {
+            return;
+        }
+
+        PoseStack matrices = context.matrices();
+        MultiBufferSource consumers = context.consumers();
+
+        if (matrices == null || consumers == null) {
+            return;
+        }
+
+        int range = 64;
+
+        BlockPos playerPos = client.player.blockPosition();
+
+        int minX = playerPos.getX() - range;
+        int maxX = playerPos.getX() + range;
+
+        int minY = Math.max(
+                client.level.getMinBuildHeight(),
+                playerPos.getY() - range
+        );
+
+        int maxY = Math.min(
+                client.level.getMaxBuildHeight(),
+                playerPos.getY() + range
+        );
+
+        int minZ = playerPos.getZ() - range;
+        int maxZ = playerPos.getZ() + range;
+
+        double cameraX =
+                context.gameRenderer()
+                        .getMainCamera()
+                        .getPosition()
+                        .x;
+
+        double cameraY =
+                context.gameRenderer()
+                        .getMainCamera()
+                        .getPosition()
+                        .y;
+
+        double cameraZ =
+                context.gameRenderer()
+                        .getMainCamera()
+                        .getPosition()
+                        .z;
+
+        matrices.pushPose();
+
+        /*
+         * WorldRenderContext rendering is performed relative to
+         * the camera position.
+         */
+        matrices.translate(
+                -cameraX,
+                -cameraY,
+                -cameraZ
+        );
+
+        for (int x = minX; x <= maxX; x++) {
+
+            for (int y = minY; y <= maxY; y++) {
+
+                for (int z = minZ; z <= maxZ; z++) {
+
+                    BlockPos pos = new BlockPos(x, y, z);
+
+                    BlockEntity blockEntity =
+                            client.level.getBlockEntity(pos);
+
+                    if (blockEntity == null) {
+                        continue;
+                    }
+
+                    StorageType type =
+                            getStorageType(blockEntity);
+
+                    if (type == StorageType.NONE) {
+                        continue;
+                    }
+
+                    renderStorage(
+                            matrices,
+                            consumers,
+                            pos,
+                            type
+                    );
+                }
+            }
+        }
+
+        matrices.popPose();
+    }
+
+    /**
+     * Determines what type of storage block this is.
+     */
+    private static StorageType getStorageType(
+            BlockEntity blockEntity) {
+
+        if (blockEntity instanceof ChestBlockEntity) {
+            return StorageType.CHEST;
+        }
+
+        if (blockEntity instanceof EnderChestBlockEntity) {
+            return StorageType.ENDER_CHEST;
+        }
+
+        if (blockEntity instanceof ShulkerBoxBlockEntity) {
+            return StorageType.SHULKER;
+        }
+
+        if (blockEntity instanceof HopperBlockEntity) {
+            return StorageType.HOPPER;
+        }
+
+        if (blockEntity instanceof AbstractFurnaceBlockEntity) {
+            return StorageType.FURNACE;
+        }
+
+        if (blockEntity instanceof DispenserBlockEntity) {
+            return StorageType.DISPENSER;
+        }
+
+        if (blockEntity instanceof DropperBlockEntity) {
+            return StorageType.DROPPER;
+        }
+
+        /*
+         * Barrels don't need to be detected through a specific
+         * BlockEntity class here; checking the actual block is
+         * more reliable.
+         */
+        if (blockEntity.getBlockState().is(Blocks.BARREL)) {
+            return StorageType.BARREL;
+        }
+
+        return StorageType.NONE;
+    }
+
+    /**
+     * Draws the actual ESP box.
+     */
+    private static void renderStorage(
+            PoseStack matrices,
+            MultiBufferSource consumers,
+            BlockPos pos,
+            StorageType type) {
+
+        AABB box = new AABB(pos);
+
+        float red = 0.1f;
+        float green = 0.8f;
+        float blue = 1.0f;
+        float alpha = 0.35f;
+
+        /*
+         * Give different storage types slightly different
+         * colors.
+         */
+        switch (type) {
+
+            case CHEST -> {
+                red = 1.0f;
+                green = 0.8f;
+                blue = 0.1f;
+            }
+
+            case ENDER_CHEST -> {
+                red = 0.7f;
+                green = 0.1f;
+                blue = 1.0f;
+            }
+
+            case SHULKER -> {
+                red = 1.0f;
+                green = 0.2f;
+                blue = 0.8f;
+            }
+
+            case BARREL -> {
+                red = 0.6f;
+                green = 0.35f;
+                blue = 0.1f;
+            }
+
+            case HOPPER -> {
+                red = 0.4f;
+                green = 0.4f;
+                blue = 0.4f;
+            }
+
+            case FURNACE -> {
+                red = 0.5f;
+                green = 0.5f;
+                blue = 0.5f;
+            }
+
+            case DISPENSER, DROPPER -> {
+                red = 0.2f;
+                green = 0.7f;
+                blue = 1.0f;
+            }
+
+            default -> {
+            }
+        }
+
+        DebugRenderer.renderFilledBox(
+                matrices,
+                consumers,
+                box,
+                red,
+                green,
+                blue,
+                alpha
+        );
+    }
+
+    private enum StorageType {
+
+        NONE,
+
+        CHEST,
+
+        ENDER_CHEST,
+
+        SHULKER,
+
+        BARREL,
+
+        HOPPER,
+
+        FURNACE,
+
+        DISPENSER,
+
+        DROPPER
+    }
+}
